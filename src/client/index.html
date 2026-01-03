@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buckshot Roulette - 3D</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- 3D Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Menu Screen -->
+  <div id="menu-screen" class="screen active">
+    <div class="menu-content">
+      <h1 class="game-title">BUCKSHOT<br>ROULETTE</h1>
+      <p class="subtitle">A game of chance and nerve</p>
+      
+      <div class="menu-buttons">
+        <button id="play-ai-btn" class="menu-btn primary">
+          <span class="btn-icon">🤖</span>
+          Play vs AI
+        </button>
+        
+        <div class="difficulty-container">
+          <label for="difficulty-select">AI Difficulty:</label>
+          <select id="difficulty-select">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+
+        <button id="play-pvp-btn" class="menu-btn secondary">
+          <span class="btn-icon">👥</span>
+          Play vs Player
+        </button>
+      </div>
+
+      <div class="game-rules">
+        <h3>How to Play</h3>
+        <ul>
+          <li>Take turns with your opponent</li>
+          <li>Choose to shoot yourself or your opponent</li>
+          <li><span class="live">🔴 Live rounds</span> deal damage</li>
+          <li><span class="blank">🔵 Blank rounds</span> are safe</li>
+          <li>Shoot yourself with a blank = extra turn!</li>
+          <li>Last player standing wins</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lobby Screen -->
+  <div id="lobby-screen" class="screen">
+    <div class="lobby-content">
+      <h2>Multiplayer Lobby</h2>
+      
+      <div class="lobby-actions">
+        <button id="create-room-btn" class="menu-btn primary">Create Room</button>
+        
+        <div class="join-room">
+          <input type="text" id="room-code-input" placeholder="Enter Room Code" maxlength="6">
+          <button id="join-room-btn" class="menu-btn secondary">Join</button>
+        </div>
+      </div>
+
+      <div id="room-code-display" class="room-code" style="display: none;"></div>
+      <p id="lobby-status" class="lobby-status">Enter a room code or create a new room</p>
+
+      <button id="lobby-back-btn" class="menu-btn back-btn">← Back to Menu</button>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="game-screen" class="screen">
+    <!-- Game HUD -->
+    <div class="game-hud">
+      <!-- Player Info -->
+      <div class="player-info player-side">
+        <span id="player-name" class="player-name">Player</span>
+        <div id="player-health" class="health-bar">
+          <span class="heart full">❤️</span>
+          <span class="heart full">❤️</span>
+          <span class="heart full">❤️</span>
+        </div>
+        <div id="player-items" class="items-bar"></div>
+      </div>
+
+      <!-- Center Info -->
+      <div class="center-info">
+        <div id="round-number" class="round-number">Round 1</div>
+        <div id="turn-indicator" class="turn-indicator">Your Turn</div>
+        <div id="shell-info" class="shell-info">
+          <span class="live-shells">🔴 0</span>
+          <span class="blank-shells">🔵 0</span>
+        </div>
+        <div id="revealed-shell" class="revealed-shell" style="display: none;"></div>
+      </div>
+
+      <!-- Opponent Info -->
+      <div class="player-info opponent-side">
+        <span id="opponent-name" class="player-name">Opponent</span>
+        <div id="opponent-health" class="health-bar">
+          <span class="heart full">❤️</span>
+          <span class="heart full">❤️</span>
+          <span class="heart full">❤️</span>
+        </div>
+        <div id="opponent-items" class="items-bar"></div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div id="action-buttons" class="action-buttons">
+      <button id="shoot-self-btn" class="action-btn shoot-self">
+        <span class="btn-label">Shoot Yourself</span>
+        <span class="btn-hint">Risk it for a blank!</span>
+      </button>
+      <button id="shoot-opponent-btn" class="action-btn shoot-opponent">
+        <span class="btn-label">Shoot Opponent</span>
+        <span class="btn-hint">Take the shot!</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Result Screen -->
+  <div id="result-screen" class="screen">
+    <div class="result-content">
+      <h1 id="result-title" class="result-title">VICTORY!</h1>
+      <p id="result-message" class="result-message">You survived the game!</p>
+      
+      <div class="result-buttons">
+        <button id="play-again-btn" class="menu-btn primary">Play Again</button>
+        <button id="main-menu-btn" class="menu-btn secondary">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Message Overlay -->
+  <div id="message-overlay" class="message-overlay">
+    <div id="message-text" class="message-text"></div>
+  </div>
+
+  <script type="module">
+    import { GameController } from './js/main.js';
+    
+    // Initialize game when DOM is ready
+    document.addEventListener('DOMContentLoaded', async () => {
+      const game = new GameController();
+      await game.init();
+      
+      // Store reference for debugging
+      window.game = game;
+    });
+  </script>
+</body>
+</html>

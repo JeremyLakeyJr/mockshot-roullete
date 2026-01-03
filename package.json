@@ -1,0 +1,26 @@
+{
+  "name": "mockshot-roullete",
+  "version": "1.0.0",
+  "description": "3D Buckshot Roulette Game with PvE and PvP modes",
+  "type": "module",
+  "main": "src/server/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "server": "node src/server/index.js",
+    "start": "npm run build && npm run server"
+  },
+  "keywords": ["game", "3d", "three.js", "multiplayer", "roulette"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "socket.io-client": "^4.7.2",
+    "three": "^0.160.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  }
+}

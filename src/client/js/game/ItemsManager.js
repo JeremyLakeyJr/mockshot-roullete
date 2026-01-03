@@ -11,7 +11,10 @@ export const ITEM_TYPE = {
   MAGNIFYING_GLASS: 'magnifying_glass',
   INVERTER: 'inverter',
   EXPIRED_MEDICINE: 'expired_medicine',
-  DOUBLE_OR_NOTHING: 'double_or_nothing'
+  DOUBLE_OR_NOTHING: 'double_or_nothing',
+  JAMMER: 'jammer',
+  PIPE_BOMB: 'pipe_bomb',
+  REMOTE: 'remote'
 };
 
 export const ITEM_INFO = {
@@ -62,11 +65,30 @@ export const ITEM_INFO = {
     icon: '💀',
     description: 'Enter endless mode',
     color: '#ff5722'
+  },
+  [ITEM_TYPE.JAMMER]: {
+    name: 'Jammer',
+    icon: '📵',
+    description: 'Prevents opponent from using items',
+    color: '#607d8b'
+  },
+  [ITEM_TYPE.PIPE_BOMB]: {
+    name: 'Pipe Bomb',
+    icon: '💣',
+    description: 'Explosive! Deals 2 damage to opponent',
+    color: '#8b0000'
+  },
+  [ITEM_TYPE.REMOTE]: {
+    name: 'Remote',
+    icon: '📺',
+    description: 'Reverses next item effect (Multiplayer)',
+    color: '#673ab7'
   }
 };
 
 export const MAX_ITEMS_PER_PLAYER = 8;
 export const ITEMS_PER_ROUND = 4;
+export const PIPE_BOMB_DAMAGE = 2;
 
 /**
  * Get random items for a round
@@ -93,6 +115,8 @@ export class ItemsManager {
   constructor() {
     this.playerItems = [[], []]; // Items for each player
     this.handcuffedPlayer = -1; // -1 = no one, 0 = player, 1 = opponent
+    this.jammedPlayer = -1; // -1 = no one, player index = that player can't use items
+    this.remoteActive = -1; // -1 = not active, player index = that player's next item is reversed
     this.endlessMode = false;
     this.revealedShell = null;
   }
@@ -100,6 +124,8 @@ export class ItemsManager {
   reset() {
     this.playerItems = [[], []];
     this.handcuffedPlayer = -1;
+    this.jammedPlayer = -1;
+    this.remoteActive = -1;
     this.endlessMode = false;
     this.revealedShell = null;
   }
@@ -150,11 +176,87 @@ export class ItemsManager {
       return { error: 'Invalid item' };
     }
 
+    // Check if player is jammed (can't use items)
+    if (this.jammedPlayer === playerIndex) {
+      return { error: '📵 You are jammed! Cannot use items this turn.' };
+    }
+
     const itemType = items[itemIndex];
-    const result = this.applyItemEffect(itemType, playerIndex, gameState, randomFn);
+    let result = this.applyItemEffect(itemType, playerIndex, gameState, randomFn);
+    
+    // Check if Remote is active for this player - reverse the effect
+    if (this.remoteActive === playerIndex && result.success) {
+      result = this.reverseItemEffect(result, playerIndex, gameState);
+      this.clearRemote();
+    }
     
     if (!result.error) {
       this.removeItem(playerIndex, itemIndex);
+    }
+    
+    return result;
+  }
+
+  /**
+   * Reverse the effect of an item (used by Remote)
+   */
+  reverseItemEffect(result, playerIndex, gameState) {
+    const opponentIndex = (playerIndex + 1) % 2;
+    
+    switch (result.itemType) {
+      case ITEM_TYPE.EXPIRED_MEDICINE:
+        // Reverse: if it healed, now it damages and vice versa
+        if (result.heals) {
+          gameState.players[playerIndex].health -= 2; // Undo heal + deal damage
+          result.message = '📺 REVERSED! 💊 Medicine now damages you! -1 HP';
+          result.healthChange = -1;
+          result.heals = false;
+        } else {
+          gameState.players[playerIndex].health += 2; // Undo damage + heal
+          if (gameState.players[playerIndex].health > 3) {
+            gameState.players[playerIndex].health = 3;
+          }
+          result.message = '📺 REVERSED! 💊 Medicine now heals you! +1 HP';
+          result.healthChange = 1;
+          result.heals = true;
+        }
+        result.playerHealth = gameState.players[playerIndex].health;
+        result.playerDied = gameState.players[playerIndex].health <= 0;
+        result.reversed = true;
+        break;
+
+      case ITEM_TYPE.PIPE_BOMB:
+        // Reverse: damages the user instead of opponent
+        gameState.players[opponentIndex].health += result.damage; // Undo opponent damage
+        gameState.players[playerIndex].health -= result.damage; // Damage self instead
+        result.message = `📺 REVERSED! 💣 Pipe Bomb explodes in your hands! -${result.damage} HP`;
+        result.targetHealth = gameState.players[playerIndex].health;
+        result.targetDied = gameState.players[playerIndex].health <= 0;
+        result.playerDied = result.targetDied;
+        result.reversed = true;
+        break;
+
+      case ITEM_TYPE.HANDCUFFS:
+        // Reverse: handcuffs the user instead
+        this.handcuffedPlayer = playerIndex;
+        result.message = '📺 REVERSED! 🔗 Handcuffs snap onto you instead!';
+        result.handcuffedPlayer = playerIndex;
+        result.reversed = true;
+        break;
+
+      case ITEM_TYPE.JAMMER:
+        // Reverse: jams the user instead
+        this.jammedPlayer = playerIndex;
+        result.message = '📺 REVERSED! 📵 Jammer affects you instead!';
+        result.jammedPlayer = playerIndex;
+        result.reversed = true;
+        break;
+
+      default:
+        // Some items can't be meaningfully reversed
+        result.message = `📺 Remote fizzles... ${result.message}`;
+        result.reversed = false;
+        break;
     }
     
     return result;
@@ -298,6 +400,38 @@ export class ItemsManager {
           endlessMode: true
         };
 
+      case ITEM_TYPE.JAMMER:
+        // Prevent opponent from using items on their next turn
+        this.jammedPlayer = opponentIndex;
+        return {
+          success: true,
+          itemType,
+          message: '📵 Jammer activated! Opponent cannot use items on their next turn.',
+          jammedPlayer: opponentIndex
+        };
+
+      case ITEM_TYPE.PIPE_BOMB:
+        // Deal damage to opponent - a dangerous explosive
+        gameState.players[opponentIndex].health -= PIPE_BOMB_DAMAGE;
+        return {
+          success: true,
+          itemType,
+          message: `💣 BOOM! Pipe Bomb deals ${PIPE_BOMB_DAMAGE} damage to opponent!`,
+          damage: PIPE_BOMB_DAMAGE,
+          targetHealth: gameState.players[opponentIndex].health,
+          targetDied: gameState.players[opponentIndex].health <= 0
+        };
+
+      case ITEM_TYPE.REMOTE:
+        // Activate remote - reverses the effect of opponent's next item (Multiplayer feature)
+        this.remoteActive = opponentIndex;
+        return {
+          success: true,
+          itemType,
+          message: '📺 Remote activated! Opponent\'s next item effect will be reversed!',
+          remoteActive: opponentIndex
+        };
+
       default:
         return { error: 'Unknown item type' };
     }
@@ -318,6 +452,34 @@ export class ItemsManager {
   }
 
   /**
+   * Check if a player is jammed
+   */
+  isJammed(playerIndex) {
+    return this.jammedPlayer === playerIndex;
+  }
+
+  /**
+   * Clear jammer after turn ends
+   */
+  clearJammer() {
+    this.jammedPlayer = -1;
+  }
+
+  /**
+   * Check if remote is active for a player
+   */
+  isRemoteActive(playerIndex) {
+    return this.remoteActive === playerIndex;
+  }
+
+  /**
+   * Clear remote after it's been triggered
+   */
+  clearRemote() {
+    this.remoteActive = -1;
+  }
+
+  /**
    * Clear revealed shell info
    */
   clearRevealedShell() {
@@ -331,6 +493,8 @@ export class ItemsManager {
     return {
       playerItems: this.playerItems,
       handcuffedPlayer: this.handcuffedPlayer,
+      jammedPlayer: this.jammedPlayer,
+      remoteActive: this.remoteActive,
       endlessMode: this.endlessMode,
       revealedShell: this.revealedShell
     };
@@ -342,6 +506,8 @@ export class ItemsManager {
   loadState(state) {
     this.playerItems = state.playerItems || [[], []];
     this.handcuffedPlayer = state.handcuffedPlayer ?? -1;
+    this.jammedPlayer = state.jammedPlayer ?? -1;
+    this.remoteActive = state.remoteActive ?? -1;
     this.endlessMode = state.endlessMode || false;
     this.revealedShell = state.revealedShell || null;
   }

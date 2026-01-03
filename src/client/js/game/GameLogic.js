@@ -208,6 +208,9 @@ export class GameLogic {
       }
     }
     
+    // Clear jammer when turn changes
+    this.itemsManager.clearJammer();
+    
     this.state = this.currentPlayerIndex === 0 
       ? GAME_STATE.PLAYER_TURN 
       : GAME_STATE.OPPONENT_TURN;
@@ -277,7 +280,9 @@ export class GameLogic {
       opponentItems: this.itemsManager.getPlayerItems(1),
       revealedShell: this.itemsManager.revealedShell,
       endlessMode: this.itemsManager.endlessMode,
-      handcuffedPlayer: this.itemsManager.handcuffedPlayer
+      handcuffedPlayer: this.itemsManager.handcuffedPlayer,
+      jammedPlayer: this.itemsManager.jammedPlayer,
+      remoteActive: this.itemsManager.remoteActive
     };
   }
 

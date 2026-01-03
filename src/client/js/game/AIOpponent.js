@@ -147,6 +147,28 @@ export class AIOpponent {
             return i;
           }
           break;
+
+        case ITEM_TYPE.PIPE_BOMB:
+          // Use when opponent is low on health to finish them off
+          if (opponentHealth <= 2) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.JAMMER:
+          // Use when player has items and AI is at risk
+          const playerItemCount = gameState.playerItems?.length || 0;
+          if (playerItemCount > 2 && this.difficulty !== AI_DIFFICULTY.EASY) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.REMOTE:
+          // Use in multiplayer when opponent has powerful items
+          if (gameState.playerItems?.length > 0 && this.difficulty === AI_DIFFICULTY.HARD) {
+            return i;
+          }
+          break;
       }
     }
 

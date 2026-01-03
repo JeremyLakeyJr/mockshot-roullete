@@ -238,6 +238,13 @@ export class GameController {
       return;
     }
 
+    if (result.targetDied) {
+      // Pipe Bomb killed the opponent
+      await this.delay(1500);
+      this.handleGameOver({ isWinner: true, winner: this.game.players[0] });
+      return;
+    }
+
     // Update game state
     this.updateGameState(this.game.getClientState());
   }

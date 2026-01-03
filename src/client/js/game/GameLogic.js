@@ -3,6 +3,8 @@
  * Handles game state, rules, and flow
  */
 
+import { ItemsManager, generateRandomItems, ITEMS_PER_ROUND, ITEM_INFO } from './ItemsManager.js';
+
 export const GAME_CONFIG = {
   INITIAL_HEALTH: 3,
   MIN_SHELLS: 2,
@@ -33,6 +35,7 @@ export class GameLogic {
   constructor(playerCount = 2, isMultiplayer = false) {
     this.playerCount = playerCount;
     this.isMultiplayer = isMultiplayer;
+    this.itemsManager = new ItemsManager();
     this.reset();
   }
 
@@ -54,6 +57,7 @@ export class GameLogic {
     this.lastShotResult = null;
     this.liveCount = 0;
     this.blankCount = 0;
+    this.itemsManager.reset();
   }
 
   /**
@@ -89,10 +93,21 @@ export class GameLogic {
     this.currentChamberIndex = 0;
     this.state = GAME_STATE.PLAYER_TURN;
     
+    // Distribute items to both players at start of round
+    const playerItems = generateRandomItems(ITEMS_PER_ROUND, randomFn);
+    const opponentItems = generateRandomItems(ITEMS_PER_ROUND, randomFn);
+    this.itemsManager.distributeItems(playerItems, 0);
+    this.itemsManager.distributeItems(opponentItems, 1);
+    
+    // Clear any revealed shell info
+    this.itemsManager.clearRevealedShell();
+    
     return {
       totalShells,
       liveCount: this.liveCount,
-      blankCount: this.blankCount
+      blankCount: this.blankCount,
+      playerItems,
+      opponentItems
     };
   }
 
@@ -131,6 +146,9 @@ export class GameLogic {
 
     const currentShell = this.chamber[this.currentChamberIndex];
     this.currentChamberIndex++;
+    
+    // Clear revealed shell after shooting
+    this.itemsManager.clearRevealedShell();
 
     const targetIndex = target === SHOT_TARGET.SELF 
       ? shooterIndex 
@@ -156,9 +174,9 @@ export class GameLogic {
       targetHealth: this.players[targetIndex].health
     };
 
-    // Check for game over
+    // Check for game over (unless endless mode)
     const deadPlayer = this.players.find(p => p.health <= 0);
-    if (deadPlayer) {
+    if (deadPlayer && !this.itemsManager.endlessMode) {
       this.state = GAME_STATE.GAME_OVER;
       this.winner = this.players.find(p => p.health > 0);
       return { ...this.lastShotResult, gameOver: true, winner: this.winner };
@@ -176,7 +194,18 @@ export class GameLogic {
 
     // Determine next turn
     if (!keepTurn) {
-      this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.playerCount;
+      const nextPlayerIndex = (this.currentPlayerIndex + 1) % this.playerCount;
+      
+      // Check if next player is handcuffed
+      if (this.itemsManager.isHandcuffed(nextPlayerIndex)) {
+        // Skip their turn, clear handcuffs
+        this.itemsManager.clearHandcuffs();
+        // Keep current player's turn
+        keepTurn = true;
+        this.lastShotResult.opponentSkipped = true;
+      } else {
+        this.currentPlayerIndex = nextPlayerIndex;
+      }
     }
     
     this.state = this.currentPlayerIndex === 0 
@@ -184,6 +213,47 @@ export class GameLogic {
       : GAME_STATE.OPPONENT_TURN;
 
     return this.lastShotResult;
+  }
+
+  /**
+   * Use an item
+   * @param {number} playerIndex - Player using the item
+   * @param {number} itemIndex - Index of item in inventory
+   * @param {Function} randomFn - Random function
+   * @returns {Object} Result of using the item
+   */
+  useItem(playerIndex, itemIndex, randomFn = Math.random) {
+    if (this.state !== GAME_STATE.PLAYER_TURN && 
+        this.state !== GAME_STATE.OPPONENT_TURN) {
+      return { error: 'Not in playing phase' };
+    }
+
+    if (playerIndex !== this.currentPlayerIndex) {
+      return { error: 'Not your turn' };
+    }
+
+    return this.itemsManager.useItem(playerIndex, itemIndex, this, randomFn);
+  }
+
+  /**
+   * Get items for a player
+   */
+  getPlayerItems(playerIndex) {
+    return this.itemsManager.getPlayerItems(playerIndex);
+  }
+
+  /**
+   * Get revealed shell (if any)
+   */
+  getRevealedShell() {
+    return this.itemsManager.revealedShell;
+  }
+
+  /**
+   * Check if in endless mode
+   */
+  isEndlessMode() {
+    return this.itemsManager.endlessMode;
   }
 
   /**
@@ -202,7 +272,12 @@ export class GameLogic {
       roundNumber: this.roundNumber,
       remainingShells: this.getRemainingShellCounts(),
       lastShotResult: this.lastShotResult,
-      winner: this.winner || null
+      winner: this.winner || null,
+      playerItems: this.itemsManager.getPlayerItems(0),
+      opponentItems: this.itemsManager.getPlayerItems(1),
+      revealedShell: this.itemsManager.revealedShell,
+      endlessMode: this.itemsManager.endlessMode,
+      handcuffedPlayer: this.itemsManager.handcuffedPlayer
     };
   }
 
@@ -220,7 +295,8 @@ export class GameLogic {
       lastShotResult: this.lastShotResult,
       liveCount: this.liveCount,
       blankCount: this.blankCount,
-      isMultiplayer: this.isMultiplayer
+      isMultiplayer: this.isMultiplayer,
+      itemsState: this.itemsManager.getState()
     };
   }
 
@@ -238,6 +314,9 @@ export class GameLogic {
     game.lastShotResult = data.lastShotResult;
     game.liveCount = data.liveCount;
     game.blankCount = data.blankCount;
+    if (data.itemsState) {
+      game.itemsManager.loadState(data.itemsState);
+    }
     return game;
   }
 }

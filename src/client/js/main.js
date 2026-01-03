@@ -78,6 +78,7 @@ export class GameController {
     this.ui.setCallback('onCreateRoom', () => this.createRoom());
     this.ui.setCallback('onJoinRoom', (code) => this.joinRoom(code));
     this.ui.setCallback('onLobbyBack', () => this.leaveLobby());
+    this.ui.setCallback('onUseItem', (itemIndex) => this.handleUseItem(itemIndex));
   }
 
   setupNetworkCallbacks() {
@@ -202,6 +203,45 @@ export class GameController {
   }
 
   // Game Actions
+  async handleUseItem(itemIndex) {
+    if (this.isProcessingAction) return;
+    if (this.isMultiplayer) {
+      // Send item usage to server - server will validate and broadcast result
+      this.network.useItem(itemIndex);
+      return;
+    }
+
+    const result = this.game.useItem(0, itemIndex);
+    
+    if (result.error) {
+      this.ui.showMessage(result.error, 1500);
+      return;
+    }
+
+    // Show item effect message
+    this.ui.showMessage(result.message, 2000);
+
+    // Handle special item effects
+    if (result.chamberEmpty) {
+      // Beer ejected last shell
+      await this.delay(1500);
+      this.ui.showMessage('Chamber empty! Reloading...', 1500);
+      await this.delay(1000);
+      this.startNewRound();
+      return;
+    }
+
+    if (result.playerDied) {
+      // Medicine killed the player
+      await this.delay(1500);
+      this.handleGameOver({ isWinner: false, winner: this.game.players[1] });
+      return;
+    }
+
+    // Update game state
+    this.updateGameState(this.game.getClientState());
+  }
+
   async handleShoot(target) {
     if (this.isProcessingAction) return;
     this.isProcessingAction = true;
@@ -310,13 +350,43 @@ export class GameController {
     this.ui.showMessage("AI is thinking...", 1000);
     
     const state = this.game.getClientState();
-    const decision = await this.ai.makeDecision(state);
+    const decision = await this.ai.makeDecision(state, this.game);
     
-    // Animate AI's action
-    await this.shotgun.animateAim(decision);
+    // Check if AI wants to use an item
+    if (decision.type === 'item') {
+      const itemResult = this.game.useItem(1, decision.itemIndex);
+      if (!itemResult.error) {
+        this.ui.showMessage(`AI: ${itemResult.message}`, 2000);
+        this.updateGameState(this.game.getClientState());
+        
+        // Check for special item effects
+        if (itemResult.chamberEmpty) {
+          await this.delay(1500);
+          this.ui.showMessage('Chamber empty! Reloading...', 1500);
+          await this.delay(1000);
+          this.isProcessingAction = false;
+          this.startNewRound();
+          return;
+        }
+        
+        if (itemResult.playerDied) {
+          await this.delay(1500);
+          this.handleGameOver({ isWinner: true, winner: this.game.players[0] });
+          return;
+        }
+        
+        // After using item, AI continues turn - make another decision
+        await this.delay(1000);
+        await this.processAITurn();
+        return;
+      }
+    }
+    
+    // Animate AI's action (shooting)
+    await this.shotgun.animateAim(decision.target);
     await this.delay(500);
     
-    const result = this.game.shoot(1, decision);
+    const result = this.game.shoot(1, decision.target);
     await this.handleShotResultForAI(result);
   }
 

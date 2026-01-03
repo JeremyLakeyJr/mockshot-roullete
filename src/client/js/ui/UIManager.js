@@ -3,6 +3,8 @@
  * Handles all UI elements and interactions
  */
 
+import { ITEM_INFO } from '../game/ItemsManager.js';
+
 export class UIManager {
   constructor() {
     this.elements = {};
@@ -36,6 +38,9 @@ export class UIManager {
       roundNumber: document.getElementById('round-number'),
       shellInfo: document.getElementById('shell-info'),
       turnIndicator: document.getElementById('turn-indicator'),
+      playerItems: document.getElementById('player-items'),
+      opponentItems: document.getElementById('opponent-items'),
+      revealedShell: document.getElementById('revealed-shell'),
       
       // Action buttons
       shootSelfButton: document.getElementById('shoot-self-btn'),
@@ -157,7 +162,8 @@ export class UIManager {
 
     // Update round number
     if (this.elements.roundNumber) {
-      this.elements.roundNumber.textContent = `Round ${state.roundNumber}`;
+      const endlessText = state.endlessMode ? ' 💀' : '';
+      this.elements.roundNumber.textContent = `Round ${state.roundNumber}${endlessText}`;
     }
 
     // Update shell info
@@ -170,12 +176,67 @@ export class UIManager {
       `;
     }
 
+    // Update revealed shell
+    if (this.elements.revealedShell) {
+      if (state.revealedShell) {
+        const isLive = state.revealedShell === 'live';
+        this.elements.revealedShell.textContent = isLive ? '🔍 LIVE!' : '🔍 BLANK';
+        this.elements.revealedShell.className = `revealed-shell ${state.revealedShell}`;
+        this.elements.revealedShell.style.display = 'block';
+      } else {
+        this.elements.revealedShell.style.display = 'none';
+      }
+    }
+
+    // Update items
+    if (state.playerItems) {
+      this.updateItemsDisplay('player', state.playerItems, state.currentPlayerIndex === 0);
+    }
+    if (state.opponentItems) {
+      this.updateItemsDisplay('opponent', state.opponentItems, false);
+    }
+
     // Update turn indicator
     this.updateTurnIndicator(state.currentPlayerIndex, state.state);
 
     // Enable/disable action buttons based on turn
     this.setActionButtonsEnabled(state.currentPlayerIndex === 0 && 
       (state.state === 'player_turn' || state.state === 'opponent_turn'));
+  }
+
+  updateItemsDisplay(target, items, canUse) {
+    const element = target === 'player' 
+      ? this.elements.playerItems 
+      : this.elements.opponentItems;
+
+    if (!element) return;
+
+    element.innerHTML = '';
+    
+    items.forEach((itemType, index) => {
+      const itemInfo = ITEM_INFO[itemType];
+      if (!itemInfo) return;
+
+      const btn = document.createElement('button');
+      btn.className = target === 'player' ? 'item-btn' : 'item-btn opponent-item';
+      btn.textContent = itemInfo.icon;
+      btn.disabled = !canUse || target !== 'player';
+      btn.style.borderColor = itemInfo.color;
+      
+      // Tooltip
+      const tooltip = document.createElement('span');
+      tooltip.className = 'item-tooltip';
+      tooltip.innerHTML = `<strong>${itemInfo.name}</strong><br>${itemInfo.description}`;
+      btn.appendChild(tooltip);
+
+      if (target === 'player' && canUse) {
+        btn.addEventListener('click', () => {
+          this.callbacks.onUseItem?.(index);
+        });
+      }
+
+      element.appendChild(btn);
+    });
   }
 
   updateHealth(target, health) {

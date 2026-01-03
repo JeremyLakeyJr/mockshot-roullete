@@ -79,6 +79,10 @@ export class NetworkClient {
       this.callbacks.onShotResult?.(data);
     });
 
+    this.socket.on('item_result', (data) => {
+      this.callbacks.onItemResult?.(data);
+    });
+
     this.socket.on('game_over', (data) => {
       this.callbacks.onGameOver?.(data);
     });
@@ -127,6 +131,14 @@ export class NetworkClient {
     this.socket.emit('shoot', { 
       roomCode: this.roomCode, 
       target: target 
+    });
+  }
+
+  useItem(itemIndex) {
+    if (!this.connected || !this.roomCode) return;
+    this.socket.emit('use_item', { 
+      roomCode: this.roomCode, 
+      itemIndex: itemIndex 
     });
   }
 

@@ -4,6 +4,7 @@
  */
 
 import { SHOT_TARGET } from './GameLogic.js';
+import { ITEM_TYPE, ITEM_INFO } from './ItemsManager.js';
 
 export const AI_DIFFICULTY = {
   EASY: 'easy',
@@ -33,9 +34,10 @@ export class AIOpponent {
   /**
    * Make a decision based on game state
    * @param {Object} gameState - Current game state
-   * @returns {Promise<string>} - Decision ('self' or 'opponent')
+   * @param {Object} game - Game logic instance for item usage
+   * @returns {Promise<Object>} - Decision { type: 'shoot'|'item', target?, itemIndex? }
    */
-  async makeDecision(gameState) {
+  async makeDecision(gameState, game = null) {
     const delay = this.decisionDelay.min + 
       Math.random() * (this.decisionDelay.max - this.decisionDelay.min);
     
@@ -47,17 +49,108 @@ export class AIOpponent {
 
     const myHealth = gameState.players[1].health;
     const opponentHealth = gameState.players[0].health;
+    const myItems = gameState.opponentItems || [];
 
+    // AI might use an item first (based on difficulty)
+    if (game && myItems.length > 0) {
+      const itemDecision = this.shouldUseItem(myItems, liveProb, blankProb, myHealth, opponentHealth, gameState);
+      if (itemDecision !== null) {
+        return { type: 'item', itemIndex: itemDecision };
+      }
+    }
+
+    // Make shooting decision
+    let target;
     switch (this.difficulty) {
       case AI_DIFFICULTY.EASY:
-        return this.easyStrategy(liveProb, blankProb);
+        target = this.easyStrategy(liveProb, blankProb);
+        break;
       case AI_DIFFICULTY.MEDIUM:
-        return this.mediumStrategy(liveProb, blankProb, myHealth, opponentHealth);
+        target = this.mediumStrategy(liveProb, blankProb, myHealth, opponentHealth);
+        break;
       case AI_DIFFICULTY.HARD:
-        return this.hardStrategy(liveProb, blankProb, myHealth, opponentHealth, gameState);
+        target = this.hardStrategy(liveProb, blankProb, myHealth, opponentHealth, gameState);
+        break;
       default:
-        return this.mediumStrategy(liveProb, blankProb, myHealth, opponentHealth);
+        target = this.mediumStrategy(liveProb, blankProb, myHealth, opponentHealth);
     }
+
+    return { type: 'shoot', target };
+  }
+
+  /**
+   * Decide if AI should use an item
+   * @returns {number|null} Item index to use, or null to skip
+   */
+  shouldUseItem(items, liveProb, blankProb, myHealth, opponentHealth, gameState) {
+    // Easy AI rarely uses items
+    if (this.difficulty === AI_DIFFICULTY.EASY && Math.random() > 0.2) {
+      return null;
+    }
+
+    // Medium AI uses items sometimes
+    if (this.difficulty === AI_DIFFICULTY.MEDIUM && Math.random() > 0.5) {
+      return null;
+    }
+
+    // Prioritize items based on situation
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      switch (item) {
+        case ITEM_TYPE.MAGNIFYING_GLASS:
+          // Use if we don't know what's in chamber
+          if (!gameState.revealedShell) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.BEER:
+          // Use if revealed shell is bad for us (live and we want to shoot self, or blank and we want to shoot opponent)
+          if (gameState.revealedShell === 'live' && myHealth === 1) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.INVERTER:
+          // Use strategically - flip blanks to live when shooting opponent
+          if (gameState.revealedShell === 'blank' && opponentHealth === 1) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.HANDCUFFS:
+          // Use when opponent is low on health to get extra shots
+          if (opponentHealth <= 2 && this.difficulty !== AI_DIFFICULTY.EASY) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.EXPIRED_MEDICINE:
+          // Use when low on health (risky but necessary)
+          if (myHealth === 1 && this.difficulty === AI_DIFFICULTY.HARD) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.BURNER_PHONE:
+          // Use early in round for intel
+          if (gameState.remainingShells.total > 3) {
+            return i;
+          }
+          break;
+
+        case ITEM_TYPE.ADRENALINE:
+          // Use if opponent has good items
+          const playerItems = gameState.playerItems || [];
+          if (playerItems.length > 0 && this.difficulty !== AI_DIFFICULTY.EASY) {
+            return i;
+          }
+          break;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -96,6 +189,15 @@ export class AIOpponent {
    */
   hardStrategy(liveProb, blankProb, myHealth, opponentHealth, gameState) {
     const { live, blank } = gameState.remainingShells;
+
+    // If we know the shell type, make optimal decision
+    if (gameState.revealedShell) {
+      if (gameState.revealedShell === 'live') {
+        return SHOT_TARGET.OPPONENT;
+      } else {
+        return SHOT_TARGET.SELF; // Blank = extra turn
+      }
+    }
 
     // Certain cases
     if (live === 0) {
